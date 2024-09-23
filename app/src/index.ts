@@ -10,12 +10,20 @@ const app = express();
 configDotenv();
 const port = 8081;
 
-if(!process.env.ENV_BSC_SCAN_API_KEY){
-    throw new Error("ENV_BSC_SCAN_API_KEY is required");
+if (!process.env.ENV_BSC_SCAN_API_KEY) {
+    throw new Error('ENV_BSC_SCAN_API_KEY is required');
 }
 
-if(!(process.env.ENV_PROVER_URL && process.env.ENV_BREVIS_SERVICE_URL)){
-    throw new Error('ENV_PROVER_URL and ENV_BREVIS_SERVICE_URL are required')
+let appCallBackAddress = ''
+
+if(!process.env.ENV_APP_CONTRACT_ADDRESS){
+    throw new Error('ENV_APP_CONTRACT_ADDRESS is required!');
+}
+
+appCallBackAddress = process.env.ENV_APP_CONTRACT_ADDRESS
+
+if (!(process.env.ENV_PROVER_URL && process.env.ENV_BREVIS_SERVICE_URL)) {
+    throw new Error('ENV_PROVER_URL and ENV_BREVIS_SERVICE_URL are required');
 }
 // @ts-ignore
 const prover = new Prover(process.env.ENV_PROVER_URL);
@@ -63,25 +71,25 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
     //select transaction from dune
     const url = `https://api.bscscan.com/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&page=1&offset=1&sort=desc&apikey=${process.env.ENV_BSC_SCAN_API_KEY}`;
     const rsp = await axios.get(url);
-    if(!(rsp.status && rsp.data.result.length>0)){
+    if (!(rsp.status && rsp.data.result.length > 0)) {
         return next(new BizError('-10003', 'No transaction found'));
     }
     const transactionApi = rsp.data.result[0];
     const timestamp = transactionApi.timeStamp;
-    if(!isTimestampWithinLast30Days(timestamp)){
+    if (!isTimestampWithinLast30Days(timestamp)) {
         return next(new BizError('-10003', 'Transaction is not met requirement!'));
     }
     const transactionId = transactionApi.hash;
     //start to handle brevis process
-    console.log(`transactionId :${transactionId}`)
+    console.log(`transactionId :${transactionId}`);
     const proofReq = new ProofRequest();
 
     const provider = new ethers.providers.JsonRpcProvider(process.env.ENV_BSC_RPC_URL);
 
-    console.log(`Get transaction info for ${transactionId}`)
-    const transaction = await provider.getTransaction(transactionId)
-    if(!transaction){
-        return next(new BizError('-10005', 'Transaction not found'))
+    console.log(`Get transaction info for ${transactionId}`);
+    const transaction = await provider.getTransaction(transactionId);
+    if (!transaction) {
+        return next(new BizError('-10005', 'Transaction not found'));
     }
 
     // if (transaction.type != 0 && transaction.type != 2) {
@@ -95,15 +103,15 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
     // }
 
     // const receipt = await provider.getTransactionReceipt(transactionId)
-    var gas_tip_cap_or_gas_price = ''
-    var gas_fee_cap = ''
+    var gas_tip_cap_or_gas_price = '';
+    var gas_fee_cap = '';
     if (transaction.type = 0) {
         //todo
-        gas_tip_cap_or_gas_price = transaction.gasPrice?._hex ?? '0x00'
-        gas_fee_cap = '0x00'
+        gas_tip_cap_or_gas_price = transaction.gasPrice?._hex ?? '0';
+        gas_fee_cap = '0';
     } else {
-        gas_tip_cap_or_gas_price = transaction.maxPriorityFeePerGas?._hex ?? '0x00'
-        gas_fee_cap = transaction.maxFeePerGas?._hex ?? '0x00'
+        gas_tip_cap_or_gas_price = transaction.maxPriorityFeePerGas?._hex ?? '0';
+        gas_fee_cap = transaction.maxFeePerGas?._hex ?? '0';
     }
 
     proofReq.addTransaction(
@@ -115,17 +123,24 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
             nonce: transaction.nonce,
             gas_tip_cap_or_gas_price: gas_tip_cap_or_gas_price,
             gas_fee_cap: gas_fee_cap,
-            //todo
-            gas_limit: transaction.gasLimit.toString(),
+            // gas_limit: transaction.gasLimit.toString(),
             from: transaction.from,
             to: transaction.to,
             value: transaction.value._hex,
         }),
     );
 
-    console.log(`Send prove request for ${transactionId}`)
+    console.log(`Send prove request for ${transactionId}`);
 
-    const proofRes = await prover.prove(proofReq);
+    let proofRes;
+
+    try {
+        proofRes = await prover.prove(proofReq);
+    } catch (err) {
+        // @ts-ignore
+        console.log(err.message)
+        return next(new BizError('-10006', 'Call prover error'));
+    }
     // error handling
     if (proofRes.has_err) {
         const err = proofRes.err;
@@ -147,7 +162,7 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
     console.log('proof', proofRes.proof);
 
     try {
-        const brevisRes = await brevis.submit(proofReq, proofRes, 56, 97, 0, '', '');
+        const brevisRes = await brevis.submit(proofReq, proofRes, 56, 97, 0, '', appCallBackAddress);
         console.log('brevis res', brevisRes);
 
         await brevis.wait(brevisRes.queryKey, 97);
@@ -160,8 +175,8 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
 
 function isTimestampWithinLast30Days(timestamp: number): boolean {
     const now = new Date().getTime();
-    const thirtyDaysAgo = now - (30 * 24 * 60 * 60)*1000;
-    return Number(timestamp)*1000 >= thirtyDaysAgo;
+    const thirtyDaysAgo = now - (30 * 24 * 60 * 60) * 1000;
+    return Number(timestamp) * 1000 >= thirtyDaysAgo;
 }
 
 
