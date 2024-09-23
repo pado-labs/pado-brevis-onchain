@@ -168,6 +168,7 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
         await brevis.wait(brevisRes.queryKey, 97);
     } catch (err) {
         console.error(err);
+        return next(new BizError('-10007', 'Call brevis error'))
     }
 
     return res.status(200).set('Content-Type', 'application/json').send({ success: true });
