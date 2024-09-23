@@ -10,6 +10,10 @@ const app = express();
 configDotenv();
 const port = 8081;
 
+if(!process.env.ENV_BSC_SCAN_API_KEY){
+    throw new Error("ENV_BSC_SCAN_API_KEY is required");
+}
+
 if(!(process.env.ENV_PROVER_URL && process.env.ENV_BREVIS_SERVICE_URL)){
     throw new Error('ENV_PROVER_URL and ENV_BREVIS_SERVICE_URL are required')
 }
@@ -57,54 +61,17 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
         return next(new BizError('-10001', 'Address is required'));
     }
     //select transaction from dune
-    const config = {
-        headers: {
-            'X-Dune-API-Key': process.env.ENV_DUNE_API_KEY,
-            'Content-Type': 'application/json',
-        },
-    };
-    const body = {
-        'query_parameters': {
-            wallet_address: address,
-        },
-    };
-    let rsp;
-    try {
-        rsp = await axios.post(`https://api.dune.com/api/v1/query/4085976/execute`, body, config);
-    } catch (err) {
-        console.log(err);
-        // @ts-ignore
-        return next(new BizError('-10000', err.message));
+    const url = `https://api.bscscan.com/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&page=1&offset=1&sort=desc&apikey=${process.env.ENV_BSC_SCAN_API_KEY}`;
+    const rsp = await axios.get(url);
+    if(!(rsp.status && rsp.data.result.length>0)){
+        return next(new BizError('-10003', 'No transaction found'));
     }
-    //get query results
-    let queryStatus;
-    let transactionId;
-    while (queryStatus !== 'QUERY_STATE_COMPLETED'){
-        try {
-            rsp = await axios.get(`https://api.dune.com/api/v1/execution/${rsp.data.execution_id}/results`, config);
-            queryStatus = rsp.data.state;
-            if(queryStatus === 'QUERY_STATE_COMPLETED'){
-                if(rsp.data.result.metadata.row_count > 0){
-                    transactionId = rsp.data.result.rows[0].hash;
-                }else{
-                    return next(new BizError('-10003', 'No transaction found'));
-                }
-                break;
-            }
-            if(queryStatus === 'QUERY_STATE_FAILED' || queryStatus ==='QUERY_STATE_CANCELLED'|| queryStatus==='QUERY_STATE_EXPIRED'||queryStatus === 'QUERY_STATE_COMPLETED_PARTIAL'){
-                return next(new BizError('-10004', 'Query failed'));
-            }
-            //sleep 500 ms
-            console.log(`Try request later after 500ms `)
-            await new Promise(resolve => setTimeout(resolve, 500));
-
-        } catch (err) {
-            console.log(err);
-            // @ts-ignore
-            return next(new BizError('-10000', err.message));
-        }
+    const transactionApi = rsp.data.result[0];
+    const timestamp = transactionApi.timeStamp;
+    if(!isTimestampWithinLast30Days(timestamp)){
+        return next(new BizError('-10003', 'Transaction is not met requirement!'));
     }
-
+    const transactionId = transactionApi.hash;
     //start to handle brevis process
     console.log(`transactionId :${transactionId}`)
     const proofReq = new ProofRequest();
@@ -127,7 +94,7 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
     //     return
     // }
 
-    const receipt = await provider.getTransactionReceipt(transactionId)
+    // const receipt = await provider.getTransactionReceipt(transactionId)
     var gas_tip_cap_or_gas_price = ''
     var gas_fee_cap = ''
     if (transaction.type = 0) {
@@ -189,6 +156,12 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
     }
 
     return res.status(200).set('Content-Type', 'application/json').send({ success: true });
+}
+
+function isTimestampWithinLast30Days(timestamp: number): boolean {
+    const now = new Date().getTime();
+    const thirtyDaysAgo = now - (30 * 24 * 60 * 60)*1000;
+    return Number(timestamp)*1000 >= thirtyDaysAgo;
 }
 
 
