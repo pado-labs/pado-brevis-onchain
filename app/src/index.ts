@@ -15,13 +15,16 @@ if (!process.env.ENV_BSC_SCAN_API_KEY) {
     throw new Error('ENV_BSC_SCAN_API_KEY is required');
 }
 
-let appCallBackAddress = ''
+if(!process.env.ENV_BSC_SCAN_API_URL){
+    throw new Error('ENV_BSC_SCAN_API_URL is required');
+}
 
 if(!process.env.ENV_APP_CONTRACT_ADDRESS){
     throw new Error('ENV_APP_CONTRACT_ADDRESS is required!');
 }
 
-appCallBackAddress = process.env.ENV_APP_CONTRACT_ADDRESS
+const appCallBackAddress  = process.env.ENV_APP_CONTRACT_ADDRESS
+const bscScanApiUrl = process.env.ENV_BSC_SCAN_API_URL;
 
 if (!(process.env.ENV_PROVER_URL && process.env.ENV_BREVIS_SERVICE_URL)) {
     throw new Error('ENV_PROVER_URL and ENV_BREVIS_SERVICE_URL are required');
@@ -70,7 +73,7 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
         return next(new BizError('-10001', 'Address is required'));
     }
     //select transaction from dune
-    const url = `https://api.bscscan.com/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&page=1&offset=1&sort=desc&apikey=${process.env.ENV_BSC_SCAN_API_KEY}`;
+    const url = `${bscScanApiUrl}?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&page=1&offset=1&sort=desc&apikey=${process.env.ENV_BSC_SCAN_API_KEY}`;
     const rsp = await axios.get(url);
     if (!(rsp.status && rsp.data.result.length > 0)) {
         return next(new BizError('-10003', 'No transaction found'));
@@ -111,12 +114,12 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
     // const receipt = await provider.getTransactionReceipt(transactionId)
     var gas_tip_cap_or_gas_price = '';
     var gas_fee_cap = '';
-    if (transaction.type = 0) {
-        gas_tip_cap_or_gas_price = transaction.gasPrice?._hex ?? ''
+    if (transaction.type === 0) {
+        gas_tip_cap_or_gas_price = transaction.gasPrice?._hex ?? '0'
         gas_fee_cap = '0'
     } else {
-        gas_tip_cap_or_gas_price = transaction.maxPriorityFeePerGas?._hex ?? ''
-        gas_fee_cap = transaction.maxFeePerGas?._hex ?? ''
+        gas_tip_cap_or_gas_price = transaction.maxPriorityFeePerGas?._hex ?? '0'
+        gas_fee_cap = transaction.maxFeePerGas?._hex ?? '0'
     }
 
     proofReq.addTransaction(
