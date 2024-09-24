@@ -1,5 +1,5 @@
 import express, { NextFunction, Request, Response } from 'express';
-import { buildCommonFailureResponse, buildFailureResponse } from './utils/RspUtil';
+import { buildCommonFailureResponse, buildFailureResponse, buildSuccessResponse } from './utils/RspUtil';
 import { BizError } from './types';
 import axios from 'axios';
 import { configDotenv } from 'dotenv';
@@ -80,7 +80,7 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
     }
     const transactionApi = rsp.data.result[0];
     const timestamp = transactionApi.timeStamp;
-    if (!isTimestampWithinLast30Days(timestamp)) {
+    if (!checkBlockTime(timestamp)) {
         return next(new BizError('-10003', 'Transaction is not met requirement!'));
     }
     const transactionId = transactionApi.hash;
@@ -171,23 +171,28 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
 
     try {
 
-        const brevisRes = await brevis.submit(proofReq, proofRes, 56, 97, 0, '', appCallBackAddress);
+        const brevisRes = await brevis.submit(proofReq, proofRes, 97, 97, 0, '', appCallBackAddress);
 
         console.log('brevis res', brevisRes);
 
-        await brevis.wait(brevisRes.queryKey, 97);
+        const { queryKey, success }=await brevis.wait(brevisRes.queryKey, 97);
+        if(!success){
+            return res.status(200).set('Content-Type', 'application/json').send(buildCommonFailureResponse());
+        }
     } catch (err) {
         console.error(err);
         return next(new BizError('-10007', 'Call brevis error'))
     }
 
-    return res.status(200).set('Content-Type', 'application/json').send({ success: true });
+    return res.status(200).set('Content-Type', 'application/json').send(buildSuccessResponse('success'));
 }
 
-function isTimestampWithinLast30Days(timestamp: number): boolean {
-    const now = new Date().getTime();
-    const thirtyDaysAgo = now - (30 * 24 * 60 * 60) * 1000;
-    return Number(timestamp) * 1000 >= thirtyDaysAgo;
+function checkBlockTime(timestamp: number): boolean {
+    // check timestamp > 2024-07-01
+    //month starts from 0, so param month should be  6
+    const july1st2024 = new Date(2024, 6, 1).getTime();
+    const timestampMs = timestamp * 1000;
+    return timestampMs >= july1st2024;
 }
 
 
