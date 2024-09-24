@@ -92,10 +92,9 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
         return next(new BizError('-10005', 'Transaction not found'));
     }
 
-    // if (transaction.type != 0 && transaction.type != 2) {
-    //     console.error("only type0 and type2 transactions are supported")
-    //     return
-    // }
+    if (transaction.type != 0 && transaction.type != 2) {
+        return next(new BizError('-10008', 'Only type0 and type2 transactions are supported'));
+    }
 
     // if (transaction.nonce != 0) {
     //     console.error("only transaction with nonce 0 is supported by sample circuit")
@@ -106,12 +105,11 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
     var gas_tip_cap_or_gas_price = '';
     var gas_fee_cap = '';
     if (transaction.type = 0) {
-        //todo
-        gas_tip_cap_or_gas_price = transaction.gasPrice?._hex ?? '0';
-        gas_fee_cap = '0';
+        gas_tip_cap_or_gas_price = transaction.gasPrice?._hex ?? ''
+        gas_fee_cap = '0'
     } else {
-        gas_tip_cap_or_gas_price = transaction.maxPriorityFeePerGas?._hex ?? '0';
-        gas_fee_cap = transaction.maxFeePerGas?._hex ?? '0';
+        gas_tip_cap_or_gas_price = transaction.maxPriorityFeePerGas?._hex ?? ''
+        gas_fee_cap = transaction.maxFeePerGas?._hex ?? ''
     }
 
     proofReq.addTransaction(
@@ -123,7 +121,7 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
             nonce: transaction.nonce,
             gas_tip_cap_or_gas_price: gas_tip_cap_or_gas_price,
             gas_fee_cap: gas_fee_cap,
-            // gas_limit: transaction.gasLimit.toString(),
+            gas_limit: transaction.gasLimit.toNumber(),
             from: transaction.from,
             to: transaction.to,
             value: transaction.value._hex,
@@ -162,7 +160,9 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
     console.log('proof', proofRes.proof);
 
     try {
-        const brevisRes = await brevis.submit(proofReq, proofRes, 56, 97, 0, '', appCallBackAddress);
+
+        const brevisRes = await brevis.submit(proofReq, proofRes, 97, 97, 0, '', appCallBackAddress);
+
         console.log('brevis res', brevisRes);
 
         await brevis.wait(brevisRes.queryKey, 97);
