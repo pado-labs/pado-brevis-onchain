@@ -4,7 +4,8 @@ import { BizError } from './types';
 import axios from 'axios';
 import { configDotenv } from 'dotenv';
 import { Brevis, ErrCode, ProofRequest, Prover, TransactionData } from 'brevis-sdk-typescript';
-import { ethers } from 'ethers';
+import {ethers } from 'ethers';
+import BigNumber from 'bignumber.js';
 
 const app = express();
 configDotenv();
@@ -92,6 +93,12 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
         return next(new BizError('-10005', 'Transaction not found'));
     }
 
+    const gasLimit = new BigNumber(transaction.gasLimit.toString());
+    const maxSafeInteger = new BigNumber(Number.MAX_SAFE_INTEGER);
+    if (gasLimit.gt(maxSafeInteger)) {
+        return next(new BizError('-10009', 'Transaction invalid. Gas limit is too large.'));
+    }
+
     if (transaction.type != 0 && transaction.type != 2) {
         return next(new BizError('-10008', 'Only type0 and type2 transactions are supported'));
     }
@@ -161,7 +168,7 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
 
     try {
 
-        const brevisRes = await brevis.submit(proofReq, proofRes, 97, 97, 0, '', appCallBackAddress);
+        const brevisRes = await brevis.submit(proofReq, proofRes, 56, 97, 0, '', appCallBackAddress);
 
         console.log('brevis res', brevisRes);
 
