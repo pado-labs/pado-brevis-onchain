@@ -2,9 +2,11 @@
   "name": "app",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "bin": "dist/index.js",
   "scripts": {
-    "dev": "npx ts-node src/index.ts"
+    "dev": "npx ts-node src/index.ts",
+    "build": "rm -rf dist && tsc --build tsconfig.json"
   },
   "author": "",
   "license": "ISC",
@@ -27,5 +29,11 @@
     "dotenv": "^16.4.5",
     "ethers": "^5.5.1",
     "express": "^4.18.2"
+  },
+  "pkg": {
+    "scripts": [],
+    "assets": [
+      "node_modules/axios/dist/**/*"
+    ]
   }
 }

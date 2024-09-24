@@ -1,2 +1,11 @@
 app/node_modules
 app/.env
+app/package-lock.json
+app/tsconfig.tsbuildinfo
+app/dist
+
+contracts/package-lock.json
+contracts/.idea
+
+prover/.idea
+

@@ -175,6 +175,9 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
 
         console.log('brevis res', brevisRes);
 
+        console.log('brevis proofId', brevisRes.queryKey.query_hash)
+        console.log('brevis _nonce', brevisRes.queryKey.nonce)
+
         const { queryKey, success }=await brevis.wait(brevisRes.queryKey, 97);
         if(!success){
             return res.status(200).set('Content-Type', 'application/json').send(buildCommonFailureResponse());
