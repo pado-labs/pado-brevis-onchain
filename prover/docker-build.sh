@@ -10,6 +10,7 @@ check_go_installed() {
         go version
     else
         echo "please install golang"
+        exit 1
     fi
 }
 check_go_installed
