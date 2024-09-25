@@ -4,26 +4,33 @@ import { BizError } from './types';
 import axios from 'axios';
 import { configDotenv } from 'dotenv';
 import { Brevis, ErrCode, ProofRequest, Prover, TransactionData } from 'brevis-sdk-typescript';
-import {ethers } from 'ethers';
+import { ethers } from 'ethers';
 import BigNumber from 'bignumber.js';
+import * as process from 'node:process';
+import { ABI } from './abi/BrevisRequest';
 
 const app = express();
 configDotenv();
 const port = 8081;
+const needCheckVaribales = ['ENV_BSC_SCAN_API_KEY',
+    'ENV_KEYSTORE_PATH',
+    'ENV_KEYSTORE_PASSWORD',
+    'ENV_BSC_SCAN_API_URL',
+    'ENV_APP_CONTRACT_ADDRESS',
+    'ENV_BSC_SCAN_API_URL'];
 
-if (!process.env.ENV_BSC_SCAN_API_KEY) {
-    throw new Error('ENV_BSC_SCAN_API_KEY is required');
-}
+needCheckVaribales.forEach((key)=>{
+    if (!process.env[key]) {
+        throw new Error(`${key} is required`);
+    }
+})
+const keyStorePath = process.env.ENV_KEYSTORE_PATH;
+const keyStorePassword = process.env.ENV_KEYSTORE_PASSWORD;
 
-if(!process.env.ENV_BSC_SCAN_API_URL){
-    throw new Error('ENV_BSC_SCAN_API_URL is required');
-}
+// @ts-ignore
+let brevisRequestContract: ethers.Contract;
 
-if(!process.env.ENV_APP_CONTRACT_ADDRESS){
-    throw new Error('ENV_APP_CONTRACT_ADDRESS is required!');
-}
-
-const appCallBackAddress  = process.env.ENV_APP_CONTRACT_ADDRESS
+const appCallBackAddress = process.env.ENV_APP_CONTRACT_ADDRESS;
 const bscScanApiUrl = process.env.ENV_BSC_SCAN_API_URL;
 
 if (!(process.env.ENV_PROVER_URL && process.env.ENV_BREVIS_SERVICE_URL)) {
@@ -37,13 +44,19 @@ const brevis = new Brevis(process.env.ENV_BREVIS_SERVICE_URL);
 app.use(express.static('static'));
 app.use(express.json());
 
-app.listen(port, () => {
+app.listen(port, async () => {
+    // @ts-ignore
+    const wallet = await loadKeystoreFromFile(keyStorePath, keyStorePassword);
+    const provider = new ethers.providers.JsonRpcProvider(process.env.ENV_BSC_RPC_URL);
+    const signer = wallet.connect(provider);
+    const brevisRequestAddress = process.env.ENV_BREVIS_REQUEST_CONTRACT_ADDRESS;
+    // @ts-ignore
+    brevisRequestContract = new ethers.Contract(brevisRequestAddress, ABI, signer);
     console.log(`Server running on port ${port}`);
 });
 
 
 //curl http://ip:port/brevis-network/transaction/proof?address=0x?????
-
 app.get('/brevis-network/transaction/proof', (req: Request, res: Response, next: NextFunction) => {
     transactionProof(req, res, next);
 });
@@ -61,12 +74,10 @@ app.use((err: Error, req: Request, res: Response, next: Function) => {
     return res.status(200).set('Content-Type', 'application/json').send(buildCommonFailureResponse());
 });
 
-
-// Create a map to store the auth requests and their session IDs
-const requestMap = new Map();
-
-// GetQR returns auth request
 async function transactionProof(req: Request, res: Response, next: NextFunction) {
+    if(!brevisRequestContract){
+        return next(new BizError('-10000', 'Server not ready'));
+    }
     let address = req.query.address as string;
     console.log(`Generate transaction proof for ${address}`);
     if (!address) {
@@ -106,20 +117,15 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
         return next(new BizError('-10008', 'Only type0 and type2 transactions are supported'));
     }
 
-    // if (transaction.nonce != 0) {
-    //     console.error("only transaction with nonce 0 is supported by sample circuit")
-    //     return
-    // }
-
     // const receipt = await provider.getTransactionReceipt(transactionId)
     var gas_tip_cap_or_gas_price = '';
     var gas_fee_cap = '';
     if (transaction.type === 0) {
-        gas_tip_cap_or_gas_price = transaction.gasPrice?._hex ?? '0'
-        gas_fee_cap = '0'
+        gas_tip_cap_or_gas_price = transaction.gasPrice?._hex ?? '0';
+        gas_fee_cap = '0';
     } else {
-        gas_tip_cap_or_gas_price = transaction.maxPriorityFeePerGas?._hex ?? '0'
-        gas_fee_cap = transaction.maxFeePerGas?._hex ?? '0'
+        gas_tip_cap_or_gas_price = transaction.maxPriorityFeePerGas?._hex ?? '0';
+        gas_fee_cap = transaction.maxFeePerGas?._hex ?? '0';
     }
 
     proofReq.addTransaction(
@@ -146,7 +152,7 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
         proofRes = await prover.prove(proofReq);
     } catch (err) {
         // @ts-ignore
-        console.log(err.message)
+        console.log(err.message);
         return next(new BizError('-10006', 'Call prover error'));
     }
     // error handling
@@ -171,20 +177,26 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
 
     try {
 
+        // @ts-ignore
         const brevisRes = await brevis.submit(proofReq, proofRes, 97, 97, 0, '', appCallBackAddress);
 
-        console.log('brevis res', brevisRes);
+        // console.log('brevis res', brevisRes);
 
-        console.log('brevis proofId', brevisRes.queryKey.query_hash)
-        console.log('brevis _nonce', brevisRes.queryKey.nonce)
+        console.log('brevis proofId', brevisRes.queryKey.query_hash);
+        console.log('brevis _nonce', brevisRes.queryKey.nonce);
+        console.log('brevisRes fee', brevisRes.fee);
+        //pay for the order
+        const tx = await brevisRequestContract.sendRequest(brevisRes.queryKey.query_hash,
+            brevisRes.queryKey.nonce,
+            address,
+            [appCallBackAddress, 1],
+            0,{value: brevisRes.fee})
+        await tx.wait()
+        console.log(`pay for transactionId:${transactionId}, proofId:${brevisRes.queryKey.query_hash},nonce:${brevisRes.queryKey.nonce},fee${brevisRes.fee}`)
 
-        const { queryKey, success }=await brevis.wait(brevisRes.queryKey, 97);
-        if(!success){
-            return res.status(200).set('Content-Type', 'application/json').send(buildCommonFailureResponse());
-        }
     } catch (err) {
         console.error(err);
-        return next(new BizError('-10007', 'Call brevis error'))
+        return next(new BizError('-10007', 'Call brevis error'));
     }
 
     return res.status(200).set('Content-Type', 'application/json').send(buildSuccessResponse('success'));
@@ -196,6 +208,12 @@ function checkBlockTime(timestamp: number): boolean {
     const july1st2024 = new Date(2024, 6, 1).getTime();
     const timestampMs = timestamp * 1000;
     return timestampMs >= july1st2024;
+}
+
+async function loadKeystoreFromFile(keystorePath: string, password: string): Promise<ethers.Wallet> {
+    const fs = require('fs');
+    const keystoreJson = fs.readFileSync(keystorePath, 'utf8');
+    return ethers.Wallet.fromEncryptedJson(keystoreJson,password);
 }
 
 
