@@ -17,15 +17,20 @@ const needCheckVaribales = ['ENV_BSC_SCAN_API_KEY',
     'ENV_KEYSTORE_PASSWORD',
     'ENV_BSC_SCAN_API_URL',
     'ENV_APP_CONTRACT_ADDRESS',
-    'ENV_BSC_SCAN_API_URL'];
+    'ENV_BSC_SCAN_API_URL',
+    'ENV_BSC_SRC_CHAIN_ID',
+    'ENV_BSC_DES_CHAIN_ID'];
 
-needCheckVaribales.forEach((key)=>{
+needCheckVaribales.forEach((key) => {
     if (!process.env[key]) {
         throw new Error(`${key} is required`);
     }
-})
+});
 const keyStorePath = process.env.ENV_KEYSTORE_PATH;
 const keyStorePassword = process.env.ENV_KEYSTORE_PASSWORD;
+
+const srcChainId = process.env.ENV_BSC_SRC_CHAIN_ID;
+const desChainId = process.env.ENV_BSC_DES_CHAIN_ID;
 
 // @ts-ignore
 let brevisRequestContract: ethers.Contract;
@@ -75,7 +80,7 @@ app.use((err: Error, req: Request, res: Response, next: Function) => {
 });
 
 async function transactionProof(req: Request, res: Response, next: NextFunction) {
-    if(!brevisRequestContract){
+    if (!brevisRequestContract) {
         return next(new BizError('-10000', 'Server not ready'));
     }
     let address = req.query.address as string;
@@ -178,7 +183,7 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
     try {
 
         // @ts-ignore
-        const brevisRes = await brevis.submit(proofReq, proofRes, 97, 97, 0, '', appCallBackAddress);
+        const brevisRes = await brevis.submit(proofReq, proofRes, srcChainId, desChainId, 0, '', appCallBackAddress);
 
         // console.log('brevis res', brevisRes);
 
@@ -190,9 +195,9 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
             brevisRes.queryKey.nonce,
             address,
             [appCallBackAddress, 1],
-            0,{value: brevisRes.fee})
-        await tx.wait()
-        console.log(`pay for transactionId:${transactionId}, proofId:${brevisRes.queryKey.query_hash},nonce:${brevisRes.queryKey.nonce},fee${brevisRes.fee}`)
+            0, { value: brevisRes.fee });
+        await tx.wait();
+        console.log(`pay for transactionId:${transactionId}, proofId:${brevisRes.queryKey.query_hash},nonce:${brevisRes.queryKey.nonce},fee${brevisRes.fee}`);
 
     } catch (err) {
         console.error(err);
@@ -213,7 +218,7 @@ function checkBlockTime(timestamp: number): boolean {
 async function loadKeystoreFromFile(keystorePath: string, password: string): Promise<ethers.Wallet> {
     const fs = require('fs');
     const keystoreJson = fs.readFileSync(keystorePath, 'utf8');
-    return ethers.Wallet.fromEncryptedJson(keystoreJson,password);
+    return ethers.Wallet.fromEncryptedJson(keystoreJson, password);
 }
 
 
