@@ -19,7 +19,9 @@ const needCheckVaribales = ['ENV_BSC_SCAN_API_KEY',
     'ENV_APP_CONTRACT_ADDRESS',
     'ENV_BSC_SCAN_API_URL',
     'ENV_BSC_SRC_CHAIN_ID',
-    'ENV_BSC_DES_CHAIN_ID'];
+    'ENV_BSC_DES_CHAIN_ID',
+    'ENV_SRC_RPC_URL',
+    'ENV_DES_RPC_URL'];
 
 needCheckVaribales.forEach((key) => {
     if (!process.env[key]) {
@@ -49,11 +51,12 @@ const brevis = new Brevis(process.env.ENV_BREVIS_SERVICE_URL);
 app.use(express.static('static'));
 app.use(express.json());
 
+let signer;
 app.listen(port, async () => {
     // @ts-ignore
     const wallet = await loadKeystoreFromFile(keyStorePath, keyStorePassword);
-    const provider = new ethers.providers.JsonRpcProvider(process.env.ENV_BSC_RPC_URL);
-    const signer = wallet.connect(provider);
+    const provider = new ethers.providers.JsonRpcProvider(process.env.ENV_DES_RPC_URL);
+    signer = wallet.connect(provider);
     const brevisRequestAddress = process.env.ENV_BREVIS_REQUEST_CONTRACT_ADDRESS;
     // @ts-ignore
     brevisRequestContract = new ethers.Contract(brevisRequestAddress, ABI, signer);
@@ -104,7 +107,7 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
     console.log(`transactionId :${transactionId}`);
     const proofReq = new ProofRequest();
 
-    const provider = new ethers.providers.JsonRpcProvider(process.env.ENV_BSC_RPC_URL);
+    const provider = new ethers.providers.JsonRpcProvider(process.env.ENV_SRC_RPC_URL);
 
     console.log(`Get transaction info for ${transactionId}`);
     const transaction = await provider.getTransaction(transactionId);
@@ -119,7 +122,7 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
     }
 
     if (transaction.type != 0 && transaction.type != 2) {
-        return next(new BizError('-10008', 'Only type0 and type2 transactions are supported'));
+        return next(new BizError('-10008', 'Only type 0 and  2 transactions are supported'));
     }
 
     // const receipt = await provider.getTransactionReceipt(transactionId)
@@ -190,15 +193,19 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
         console.log('brevis proofId', brevisRes.queryKey.query_hash);
         console.log('brevis _nonce', brevisRes.queryKey.nonce);
         console.log('brevisRes fee', brevisRes.fee);
+        const nonce = await brevisRequestContract.signer.getTransactionCount();
         //pay for the order
         const tx = await brevisRequestContract.sendRequest(brevisRes.queryKey.query_hash,
             brevisRes.queryKey.nonce,
             address,
             [appCallBackAddress, 1],
-            0, { value: brevisRes.fee });
+            0, { value: brevisRes.fee, nonce: nonce, gasPrice: 5000000000});
         await tx.wait();
         console.log(`pay for transactionId:${transactionId}, proofId:${brevisRes.queryKey.query_hash},nonce:${brevisRes.queryKey.nonce},fee:${brevisRes.fee}`);
-        return res.status(200).set('Content-Type', 'application/json').send(buildSuccessResponse({proofId: brevisRes.queryKey.query_hash,blockNumber:transaction.blockNumber}));
+        return res.status(200).set('Content-Type', 'application/json').send(buildSuccessResponse({
+            proofId: brevisRes.queryKey.query_hash,
+            blockNumber: transaction.blockNumber,
+        }));
     } catch (err) {
         console.error(err);
         return next(new BizError('-10007', 'Call brevis error'));
