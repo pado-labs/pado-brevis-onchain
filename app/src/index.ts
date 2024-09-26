@@ -87,7 +87,9 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
         return next(new BizError('-10000', 'Server not ready'));
     }
     let address = req.query.address as string;
-    console.log(`Generate transaction proof for ${address}`);
+    let signature = req.query.signature as string;
+    let timestamp = req.query.timestamp as string;
+    console.log(`Generate transaction proof for ${address},timestamp:${timestamp},signature:${signature}`);
     if (!address) {
         return next(new BizError('-10001', 'Address is required'));
     }
@@ -98,8 +100,8 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
         return next(new BizError('-10003', 'No transaction found'));
     }
     const transactionApi = rsp.data.result[0];
-    const timestamp = transactionApi.timeStamp;
-    if (!checkBlockTime(timestamp)) {
+    const blockTime = transactionApi.timeStamp;
+    if (!checkBlockTime(blockTime)) {
         return next(new BizError('-10003', 'Transaction is not met requirement!'));
     }
     const transactionId = transactionApi.hash;
@@ -125,7 +127,7 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
         return next(new BizError('-10008', 'Only type 0 and  2 transactions are supported'));
     }
 
-    // const receipt = await provider.getTransactionReceipt(transactionId)
+    const receipt = await provider.getTransactionReceipt(transactionId)
     var gas_tip_cap_or_gas_price = '';
     var gas_fee_cap = '';
     if (transaction.type === 0) {
