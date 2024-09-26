@@ -197,14 +197,14 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
             [appCallBackAddress, 1],
             0, { value: brevisRes.fee });
         await tx.wait();
-        console.log(`pay for transactionId:${transactionId}, proofId:${brevisRes.queryKey.query_hash},nonce:${brevisRes.queryKey.nonce},fee${brevisRes.fee}`);
-
+        console.log(`pay for transactionId:${transactionId}, proofId:${brevisRes.queryKey.query_hash},nonce:${brevisRes.queryKey.nonce},fee:${brevisRes.fee}`);
+        return res.status(200).set('Content-Type', 'application/json').send(buildSuccessResponse({proofId: brevisRes.queryKey.query_hash,blockNumber:transaction.blockNumber}));
     } catch (err) {
         console.error(err);
         return next(new BizError('-10007', 'Call brevis error'));
     }
 
-    return res.status(200).set('Content-Type', 'application/json').send(buildSuccessResponse('success'));
+    return res.status(200).set('Content-Type', 'application/json').send(buildCommonFailureResponse());
 }
 
 function checkBlockTime(timestamp: number): boolean {
