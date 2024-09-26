@@ -120,7 +120,7 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
     if (gasLimit.gt(maxSafeInteger)) {
         return next(new BizError('-10009', 'Transaction invalid. Gas limit is too large.'));
     }
-
+    console.log(`transactionId :{}, transaction type:${transaction.type}`)
     if (transaction.type != 0 && transaction.type != 2) {
         return next(new BizError('-10008', 'Only type 0 and  2 transactions are supported'));
     }
