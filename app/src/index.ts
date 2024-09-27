@@ -203,6 +203,7 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
             [appCallBackAddress, 1],
             0, { value: brevisRes.fee, nonce: nonce, gasPrice: 5000000000});
         await tx.wait();
+        console.log(`tx hash:${tx.hash},nonce:${nonce}`);
         console.log(`pay for transactionId:${transactionId}, proofId:${brevisRes.queryKey.query_hash},nonce:${brevisRes.queryKey.nonce},fee:${brevisRes.fee}`);
         return res.status(200).set('Content-Type', 'application/json').send(buildSuccessResponse({
             proofId: brevisRes.queryKey.query_hash,
