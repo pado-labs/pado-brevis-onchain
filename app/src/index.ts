@@ -94,14 +94,27 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
         return next(new BizError('-10001', 'Address is required'));
     }
     //select transaction from dune
-    const url = `${bscScanApiUrl}?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&page=1&offset=1&sort=desc&apikey=${process.env.ENV_BSC_SCAN_API_KEY}`;
+    const url = `${bscScanApiUrl}?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&page=1&offset=100&sort=desc&apikey=${process.env.ENV_BSC_SCAN_API_KEY}`;
     const rsp = await axios.get(url);
     if (!(rsp.status && rsp.data.result.length > 0)) {
+        console.log(`address:${address},No transaction found`)
         return next(new BizError('-10003', 'No transaction found'));
     }
-    const transactionApi = rsp.data.result[0];
+    let transactionApi;
+    for (let i = 0; i < rsp.data.result.length; i++) {
+        if((rsp.data.result[i].from).toLowerCase() === address.toLowerCase()){
+            transactionApi = rsp.data.result[i];
+            break;
+        }
+    }
+    if(!transactionApi){
+        console.log(`address:${address},No transaction found`)
+        return next(new BizError('-10003', 'No transaction found'));
+    }
+
     const blockTime = transactionApi.timeStamp;
     if (!checkBlockTime(blockTime)) {
+        console.log(`address:${address},Transaction is not met requirement!`)
         return next(new BizError('-10003', 'Transaction is not met requirement!'));
     }
     const transactionId = transactionApi.hash;
@@ -114,16 +127,19 @@ async function transactionProof(req: Request, res: Response, next: NextFunction)
     console.log(`Get transaction info for ${transactionId}`);
     const transaction = await provider.getTransaction(transactionId);
     if (!transaction) {
+        console.log(`address:${address},Transaction not found 2!`)
         return next(new BizError('-10005', 'Transaction not found'));
     }
 
     const gasLimit = new BigNumber(transaction.gasLimit.toString());
     const maxSafeInteger = new BigNumber(Number.MAX_SAFE_INTEGER);
     if (gasLimit.gt(maxSafeInteger)) {
+        console.log(`address:${address},Transaction invalid. Gas limit is too large.`)
         return next(new BizError('-10009', 'Transaction invalid. Gas limit is too large.'));
     }
-    console.log(`transactionId :{}, transaction type:${transaction.type}`)
+    console.log(`transactionId :${transactionId}, transaction type:${transaction.type}`)
     if (transaction.type != 0 && transaction.type != 2) {
+        console.log(`address:${address},Only type 0 and  2 transactions are supported.`)
         return next(new BizError('-10008', 'Only type 0 and  2 transactions are supported'));
     }
 
